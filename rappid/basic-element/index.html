@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <link
+      rel="stylesheet"
+      type="text/css"
+      href="https://resources.jointjs.com/demos/rappid/build/package/rappid.css"
+    />
+    
+    <style>
+      #stencil-container {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100px;
+        bottom: 0;
+      }
+
+      #paper-container {
+        position: absolute;
+        right: 0;
+        top: 0;
+        left: 100px;
+        bottom: 0;
+      }
+
+      #logo {
+        position: absolute;
+        bottom: 20px;
+        right: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- content -->
+    <div id="stencil-container"></div>
+    <div id="paper-container"></div>
+    <div id="inspector-container">
+      <div class="custom-fields"></div>
+    </div>
+    <div id="toolbar-container"></div>
+    <a target="_blank" href="https://www.jointjs.com">
+      <img id="logo" src="https://assets.codepen.io/7589991/jointjs-logo.svg" width="200" height="50"></img>
+    </a>
+
+    <!-- dependencies -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lodash.js/4.17.21/lodash.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/backbone.js/1.4.0/backbone-min.js"></script>
+    <script src="https://resources.jointjs.com/demos/rappid/build/package/rappid.js"></script>
+
+    <script>
+      const { dia, ui, shapes, linkTools } = joint;
+
+      const graph = new dia.Graph({}, { cellNamespace: shapes });
+      const paper = new dia.Paper({
+        model: graph,
+        cellViewNamespace: shapes,
+        width: "100%",
+        height: "100%",
+        gridSize: 20,
+        drawGrid: { name: "mesh" },
+        async: true,
+        sorting: dia.Paper.sorting.APPROX,
+        background: { color: "#F3F7F6" },
+      });
+
+      document.getElementById("paper-container").appendChild(paper.el);
+
+      const stencil = new ui.Stencil({
+        paper,
+        usePaperGrid: true,
+        width: 100,
+        height: "100%",
+        paperOptions: () => {
+          return {
+            model: new dia.Graph({}, { cellNamespace: shapes }),
+            cellViewNamespace: shapes,
+            background: {
+              color: "#FCFCFC",
+            },
+          };
+        },
+        layout: {
+          columns: 1,
+          rowHeight: "compact",
+          rowGap: 10,
+          columnWidth: 100,
+          marginY: 10,
+          // reset defaults
+          resizeToFit: false,
+          dx: 0,
+          dy: 0,
+        },
+      });
+
+      stencil.render();
+      document.getElementById("stencil-container").appendChild(stencil.el);
+
+      class LinkElement extends dia.Element {
+        markup = [
+          {
+            tagName: "rect",
+            selector: "bg",
+          },
+          {
+            tagName: "path",
+            selector: "line",
+          },
+        ];
+
+        defaults() {
+          return {
+            ...super.defaults,
+            type: "LinkElement",
+            attrs: {
+              bg: {
+                width: "calc(w)",
+                height: "calc(h)",
+                fill: "transparent",
+              },
+              line: {
+                d: "M 0 calc(h) calc(w) 0",
+                stroke: "#333",
+                strokeWidth: 2,
+                targetMarker: {
+                  type: "path",
+                  d: "M 10 -5 0 0 10 5 z",
+                },
+              },
+            },
+          };
+        }
+      }
+
+      Object.assign(shapes, { LinkElement });
+
+      stencil.load([
+        {
+          type: "standard.Rectangle",
+          size: { width: 80, height: 60 },
+        },
+        {
+          type: "standard.Ellipse",
+          size: { width: 80, height: 60 },
+        },
+        {
+          type: "LinkElement",
+          size: { width: 80, height: 60 },
+        },
+      ]);
+
+      stencil.on(
+        "element:dragend",
+        (cloneView, _evt, cloneArea, validDropTarget) => {
+          if (!validDropTarget) return;
+          if (cloneView.model.get("type") === "LinkElement") {
+            // do not add the stencil clone to the graph
+            stencil.cancelDrag({ dropAnimation: false });
+            // add an actual link instead
+            const link = new shapes.standard.Link();
+            link.source(cloneArea.bottomLeft());
+            link.target(cloneArea.topRight());
+            link.addTo(graph);
+            const toolsView = new dia.ToolsView({
+              tools: [
+                new linkTools.Remove(),
+                new linkTools.SourceArrowhead(),
+                new linkTools.TargetArrowhead(),
+              ],
+            });
+            link.findView(paper).addTools(toolsView);
+          }
+        }
+      );
+    </script>
+  </body>
+</html>

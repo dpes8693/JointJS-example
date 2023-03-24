@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <!-- dependencies -->
+    <link
+      rel="stylesheet"
+      type="text/css"
+      href="https://resources.jointjs.com/demos/rappid/build/package/rappid.css"
+    />
+
+    <style>
+      #stencil-container {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100px;
+        bottom: 0;
+      }
+      #paper-container {
+        position: absolute;
+        right: 250px;
+        top: 0;
+        left: 100px;
+        bottom: 0;
+      }
+      #paper-container .selection-wrapper[data-selection-length="1"] {
+        display: block;
+      }
+      #paper-container
+        .selection-wrapper[data-selection-length="1"]
+        ~ .selection-box {
+        display: none;
+      }
+      #inspector-container {
+        position: absolute;
+        right: 0;
+        top: 0;
+        width: 250px;
+        bottom: 0;
+        border-left: 1px solid #d3d3d3;
+      }
+      #inspector-container .joint-inspector {
+        background: #fcfcfc;
+      }
+      #inspector-container .select-box-option-content {
+        border: 1px solid #d3d3d3;
+      }
+      #inspector-container ::placeholder {
+        color: #fe854f;
+      }
+      #toolbar-container {
+        position: absolute;
+        top: 20px;
+        right: 270px;
+      }
+      #toolbar-container .joint-toolbar {
+        margin: 0;
+        padding: 4px;
+      }
+      #logo {
+        position: absolute;
+        bottom: 20px;
+        right: 0;
+      }
+      /* Hide Unknown Value Icon */
+      .select-box-option:first-child {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- content start-->
+    <div id="stencil-container"></div>
+    <div id="paper-container"></div>
+    <div id="inspector-container"></div>
+    <div id="toolbar-container"></div>
+    <a target="_blank" href="https://www.jointjs.com">
+      <img
+        id="logo"
+        src="https://assets.codepen.io/7589991/jointjs-logo.svg"
+        width="200"
+        height="50"
+      />
+    </a>
+    <!-- content end-->
+
+    <!-- dependencies -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lodash.js/4.17.21/lodash.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/backbone.js/1.4.0/backbone-min.js"></script>
+    <script src="https://resources.jointjs.com/demos/rappid/build/package/rappid.js"></script>
+
+    <script>
+      const { dia, ui, shapes, linkTools } = joint;
+
+      // Paper
+
+      const graph = new dia.Graph({}, { cellNamespace: shapes });
+      const paper = new dia.Paper({
+        model: graph,
+        cellViewNamespace: shapes,
+        width: "100%",
+        height: "100%",
+        gridSize: 20,
+        drawGrid: { name: "mesh" },
+        async: true,
+        sorting: dia.Paper.sorting.APPROX,
+        background: { color: "#F3F7F6" },
+        restrictTranslate: true,
+        clickThreshold: 10,
+      });
+
+      document.getElementById("paper-container").appendChild(paper.el);
+
+      // Stencil
+
+      const stencil = new ui.Stencil({
+        paper,
+        usePaperGrid: true,
+        width: 100,
+        height: "100%",
+        paperOptions: () => {
+          return {
+            model: new dia.Graph({}, { cellNamespace: shapes }),
+            cellViewNamespace: shapes,
+            background: {
+              color: "#FCFCFC",
+            },
+          };
+        },
+        layout: {
+          columns: 1,
+          rowHeight: "compact",
+          rowGap: 10,
+          columnWidth: 100,
+          marginY: 10,
+          // reset defaults
+          resizeToFit: false,
+          dx: 0,
+          dy: 0,
+        },
+      });
+
+      stencil.render();
+      document.getElementById("stencil-container").appendChild(stencil.el);
+
+      stencil.load([
+        {
+          type: "standard.Rectangle",
+          size: { width: 80, height: 60 },
+          attrs: {
+            label: {
+              text: "",
+            },
+            body: {
+              rx: 0,
+              stroke: "#222138",
+              fill: "#f6f6f6",
+            },
+          },
+        },
+      ]);
+
+      // Selection
+
+      const selection = new ui.Selection({
+        paper,
+        useModelGeometry: true,
+        theme: "material",
+        boxContent: false,
+      });
+
+      selection.removeHandle("resize");
+      selection.removeHandle("rotate");
+
+      paper.on("blank:pointerdown", function (evt, x, y) {
+        selection.startSelecting(evt);
+      });
+
+      paper.on("element:pointerclick", function (elementView) {
+        selection.collection.reset([elementView.model]);
+      });
+
+      stencil.on("element:drop", function (elementView) {
+        const element = elementView.model;
+        element.set("primaryValue", "a1");
+        setSecondaryAttributes(element);
+        selection.collection.reset([element]);
+      });
+
+      selection.collection.on("reset", function () {
+        openInspector();
+      });
+
+      function openInspector() {
+        ui.Inspector.close();
+
+        const cells = selection.collection.models;
+        if (cells.length === 0) return;
+
+        ui.Inspector.create("#inspector-container", {
+          cell: cells[0],
+          theme: "material",
+          inputs: {
+            primaryValue: {
+              type: "select",
+              placeholder: "Select",
+              options: [
+                { content: "A1", value: "a1" },
+                { content: "B1", value: "b1" },
+              ],
+            },
+            secondaryValue: {
+              type: "select",
+              options: "secondaryOptions",
+              placeholder: "Select",
+            },
+          },
+        });
+      }
+
+      graph.on("change:primaryValue", (cell, _, flags) => {
+        setSecondaryAttributes(cell, flags);
+      });
+
+      function setSecondaryAttributes(cell, flags) {
+        let options;
+        const primaryValue = cell.get("primaryValue");
+        switch (primaryValue) {
+          case "a1": {
+            options = [
+              { content: "---", value: null },
+              { content: "C2", value: "c2" },
+              { content: "D2", value: "d2" },
+            ];
+            break;
+          }
+          case "b1": {
+            options = [
+              { content: "---", value: null },
+              { content: "E2", value: "e2" },
+              { content: "F2", value: "f2" },
+            ];
+            break;
+          }
+          default: {
+            options = [];
+          }
+        }
+        cell.set(
+          {
+            secondaryValue: null,
+            secondaryOptions: options,
+          },
+          flags
+        );
+      }
+
+      // Command Manager
+
+      const history = new dia.CommandManager({
+        graph,
+      });
+
+      history.on("stack:undo stack:redo", function () {
+        selection.collection.reset(
+          selection.collection.filter((cell) => graph.getCell(cell))
+        );
+      });
+
+      // Toolbar
+
+      const toolbar = new joint.ui.Toolbar({
+        autoToggle: true,
+        tools: ["undo", "redo"],
+        references: {
+          commandManager: history,
+        },
+      });
+
+      document
+        .getElementById("toolbar-container")
+        .appendChild(toolbar.render().el);
+
+      // Example
+
+      const rectangle1 = new shapes.standard.Rectangle({
+        position: { x: 200, y: 200 },
+        size: { width: 80, height: 60 },
+        attrs: {
+          label: {
+            text: "A",
+          },
+          body: {
+            rx: 0,
+            stroke: "#222138",
+            fill: "#f6f6f6",
+          },
+        },
+      });
+
+      rectangle1.set("primaryValue", "a1");
+      setSecondaryAttributes(rectangle1);
+
+      graph.addCells([rectangle1]);
+
+      selection.collection.reset(graph.getElements());
+    </script>
+  </body>
+</html>
